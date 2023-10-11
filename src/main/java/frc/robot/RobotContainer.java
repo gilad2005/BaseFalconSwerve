@@ -1,13 +1,23 @@
 package frc.robot;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+
+import com.pathplanner.lib.PathConstraints;
+import com.pathplanner.lib.PathPlanner;
+import com.pathplanner.lib.PathPlannerTrajectory;
+import com.pathplanner.lib.auto.PIDConstants;
+import com.pathplanner.lib.auto.SwerveAutoBuilder;
+
 import edu.wpi.first.wpilibj.GenericHID;
 import edu.wpi.first.wpilibj.Joystick;
+import edu.wpi.first.wpilibj.PS4Controller;
 import edu.wpi.first.wpilibj.XboxController;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.InstantCommand;
+import edu.wpi.first.wpilibj2.command.PrintCommand;
 import edu.wpi.first.wpilibj2.command.button.JoystickButton;
 
-import frc.robot.autos.*;
 import frc.robot.commands.*;
 import frc.robot.subsystems.*;
 
@@ -22,17 +32,31 @@ public class RobotContainer {
     private final Joystick driver = new Joystick(0);
 
     /* Drive Controls */
-    private final int translationAxis = XboxController.Axis.kLeftY.value;
-    private final int strafeAxis = XboxController.Axis.kLeftX.value;
-    private final int rotationAxis = XboxController.Axis.kRightX.value;
+    private final int translationAxis = PS4Controller.Axis.kLeftY.value;
+    private final int strafeAxis = PS4Controller.Axis.kLeftX.value;
+    private final int rotationAxis = PS4Controller.Axis.kRightX.value;
 
     /* Driver Buttons */
-    private final JoystickButton zeroGyro = new JoystickButton(driver, XboxController.Button.kY.value);
-    private final JoystickButton robotCentric = new JoystickButton(driver, XboxController.Button.kLeftBumper.value);
+    private final JoystickButton zeroGyro = new JoystickButton(driver, PS4Controller.Button.kOptions.value);
+    private final JoystickButton robotCentric = new JoystickButton(driver, PS4Controller.Button.kShare.value);
 
     /* Subsystems */
     private final Swerve s_Swerve = new Swerve();
 
+    private final ArrayList<PathPlannerTrajectory> pathGroup = (ArrayList<PathPlannerTrajectory>) PathPlanner.loadPathGroup("4 meter y", new PathConstraints(3, 2.5));
+    private HashMap<String, Command> eventMap = new HashMap<>();
+
+    private SwerveAutoBuilder autoBuilder = new SwerveAutoBuilder(
+            s_Swerve::getPose, // Pose2d supplier
+            s_Swerve::resetOdometry, // Pose2d consumer, used to reset odometry at the beginning of auto
+            Constants.Swerve.swerveKinematics, // SwerveDriveKinematics
+            new PIDConstants(1.6, 0.0, 0.0), // PID constants to correct for translation error (used to create the X and Y PID controllers)
+            new PIDConstants(0.009, 0.0, 0.001), // PID constants to correct for rotation error (used to create the rotation controller)
+            s_Swerve::setModuleStates, // Module states consumer used to output to the drive subsystem
+            eventMap,
+        true, // Should the path be automatically mirrored depending on alliance color. Optional, defaults to true
+            s_Swerve // The drive subsystem. Used to properly set the requirements of path following commands
+        );
 
     /** The container for the robot. Contains subsystems, OI devices, and commands. */
     public RobotContainer() {
@@ -45,6 +69,9 @@ public class RobotContainer {
                 () -> robotCentric.getAsBoolean()
             )
         );
+
+        eventMap.put("marker1", new PrintCommand("Passed marker 1"));
+
 
         // Configure the button bindings
         configureButtonBindings();
@@ -68,6 +95,6 @@ public class RobotContainer {
      */
     public Command getAutonomousCommand() {
         // An ExampleCommand will run in autonomous
-        return new exampleAuto(s_Swerve);
+        return autoBuilder.fullAuto(pathGroup);
     }
 }
